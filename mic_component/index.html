@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin:0; font-family: sans-serif; text-align:center; background:transparent; }
+  #micBtn { background:#2563eb; width:140px; height:140px; border-radius:50%; border:4px solid #93c5fd;
+            color:#fff; cursor:pointer; box-shadow:0 10px 25px -5px rgba(37,99,235,.4); transition:all .3s ease; }
+  #micBtn.rec { background:#dc2626; border-color:#fca5a5; animation:pulse 1.2s infinite; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(220,38,38,.5)} 70%{box-shadow:0 0 0 22px rgba(220,38,38,0)} 100%{box-shadow:0 0 0 0 rgba(220,38,38,0)} }
+  #status { margin-top:12px; font-size:15px; color:#1e293b; font-weight:600; }
+  @media (prefers-color-scheme: dark) { #status { color:#e2e8f0; } }
+</style>
+</head>
+<body>
+  <button id="micBtn">
+    <div style="font-size:38px;">🎙</div>
+    <div style="font-weight:bold;font-size:15px;margin-top:4px;">TAP &amp; SPEAK</div>
+    <div id="label" style="font-size:13px;color:#bfdbfe;"></div>
+  </button>
+  <div id="status"></div>
+
+<script>
+  function send(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage:true, type:type}, data), "*"); }
+  var lang = "en-IN", statusText = "", rec = null, recording = false;
+
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var btn = document.getElementById("micBtn"), statusEl = document.getElementById("status");
+
+  function setup() {
+    if (!SR) { statusEl.innerText = "Please use Chrome or Edge."; return; }
+    rec = new SR();
+    rec.continuous = false; rec.interimResults = false; rec.lang = lang;
+    rec.onstart = function () { recording = true; btn.classList.add("rec"); statusEl.innerText = "🔴 ..."; };
+    rec.onend = function () { recording = false; btn.classList.remove("rec"); };
+    rec.onerror = function (e) { statusEl.innerText = "⚠️ " + e.error; };
+    rec.onresult = function (e) {
+      var text = e.results[0][0].transcript;
+      statusEl.innerText = '"' + text + '"';
+      // unique id so the same sentence spoken twice still counts as new
+      send("streamlit:setComponentValue", {value: {text: text, id: Date.now()}, dataType: "json"});
+    };
+  }
+
+  btn.onclick = function () {
+    if (!rec) return;
+    if (recording) { rec.stop(); return; }
+    rec.lang = lang;
+    try { rec.start(); } catch (err) {}
+  };
+
+  window.addEventListener("message", function (e) {
+    if (e.data.type !== "streamlit:render") return;
+    var a = e.data.args || {};
+    var newLang = a.lang || "en-IN";
+    document.getElementById("label").innerText = a.label_text || "";
+    if (!recording) statusEl.innerText = a.status_text || "";
+    if (!rec || newLang !== lang) { lang = newLang; setup(); }
+    send("streamlit:setFrameHeight", {height: 210});
+  });
+
+  send("streamlit:componentReady", {apiVersion: 1});
+  send("streamlit:setFrameHeight", {height: 210});
+</script>
+</body>
+</html>
